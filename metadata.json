@@ -1,0 +1,7 @@
+{
+  "name": "DÍAZ KANBAN",
+  "description": "A premium personal Kanban board with integrated AI assistant, featuring tech-noir aesthetics, progress visualizations, and real-time task management.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
