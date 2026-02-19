@@ -1,32 +1,32 @@
 
-import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
+import { GoogleGenerativeAI, FunctionDeclaration, FunctionDeclarationSchemaType } from "@google/generative-ai";
 import { Task } from "../types";
 
-// Fix: Initializing GoogleGenAI with import.meta.env.VITE_GEMINI_API_KEY for Vite compatibility.
+// Fix: Initializing GoogleGenerativeAI with import.meta.env.VITE_GEMINI_API_KEY for Vite compatibility.
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 const createTaskDeclaration: FunctionDeclaration = {
   name: 'createTask',
+  description: 'Crea una nueva tarea o protocolo en el tablero Kanban.',
   parameters: {
-    type: Type.OBJECT,
-    description: 'Crea una nueva tarea o protocolo en el tablero Kanban.',
+    type: FunctionDeclarationSchemaType.OBJECT,
     properties: {
       title: {
-        type: Type.STRING,
+        type: FunctionDeclarationSchemaType.STRING,
         description: 'El título corto, sintetizado y claro de la tarea.',
       },
       description: {
-        type: Type.STRING,
+        type: FunctionDeclarationSchemaType.STRING,
         description: 'Detalles operativos breves. No más de 3 líneas de texto.',
       },
       priority: {
-        type: Type.STRING,
+        type: FunctionDeclarationSchemaType.STRING,
         description: 'Nivel de prioridad: low, medium o high.',
         enum: ['low', 'medium', 'high'],
       },
       column: {
-        type: Type.STRING,
+        type: FunctionDeclarationSchemaType.STRING,
         description: 'Columna de despliegue: pending, progress o done.',
         enum: ['pending', 'progress', 'done'],
       },
@@ -67,23 +67,44 @@ export async function getAIChatResponse(messages: { role: string, content: strin
   `;
 
   try {
-    if (!ai) {
+    if (!genAI) {
       return { text: "Error de configuración: API Key de Gemini no encontrada.", functionCalls: undefined };
     }
-    const response = await ai.models.generateContent({
-      model: 'gemini-pro',
-      contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-        tools: [{ functionDeclarations: [createTaskDeclaration] }],
-      },
+
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      systemInstruction: systemInstruction,
+      tools: [{ functionDeclarations: [createTaskDeclaration] }]
     });
 
+    const chat = model.startChat({
+      history: messages.slice(0, -1).map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }))
+    });
+
+    const result = await chat.sendMessage(messages[messages.length - 1].content);
+    const response = result.response;
+    const text = response.text();
+    const functionCalls: any[] = [];
+
+    // Check for function calls in candidates
+    const calls = response.functionCalls();
+    if (calls && calls.length > 0) {
+      calls.forEach(call => {
+        functionCalls.push({ name: call.name, args: call.args });
+      });
+    }
+
     return {
-      text: response.text || (response.functionCalls ? "Protocolo aceptado. Tarea integrada en el sistema visual." : "Lo siento, mi conexión neuronal ha fallado."),
-      functionCalls: response.functionCalls
+      text: text || "Protocolo aceptado. Procesando solicitud...",
+      functionCalls: functionCalls.length > 0 ? {
+        name: functionCalls[0].name, // Adapt to previous interface expectation
+        args: functionCalls[0].args
+      } : undefined
     };
+
   } catch (error) {
     console.error("AI Error Full:", error);
     let errorMessage = "Error al conectar con la IA central.";
