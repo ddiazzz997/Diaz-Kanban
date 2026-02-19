@@ -85,7 +85,13 @@ export async function getAIChatResponse(messages: { role: string, content: strin
       functionCalls: response.functionCalls
     };
   } catch (error) {
-    console.error("AI Error:", error);
-    return { text: "Error al conectar con la IA central.", functionCalls: undefined };
+    console.error("AI Error Full:", error);
+    let errorMessage = "Error al conectar con la IA central.";
+    if (error instanceof Error) {
+      errorMessage += ` Detalle: ${error.message}`;
+    } else {
+      errorMessage += ` Detalle: ${JSON.stringify(error)}`;
+    }
+    return { text: errorMessage, functionCalls: undefined };
   }
 }
