@@ -2,8 +2,8 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { Task } from "../types";
 
-// Fix: Initializing GoogleGenAI with process.env.API_KEY directly as per SDK guidelines.
-const apiKey = process.env.API_KEY;
+// Fix: Initializing GoogleGenAI with import.meta.env.VITE_GEMINI_API_KEY for Vite compatibility.
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const createTaskDeclaration: FunctionDeclaration = {
