@@ -13,15 +13,15 @@ const MagicModeOverlay: React.FC<MagicModeOverlayProps> = ({ tasks, onMagicDrop 
   const [grabbedTaskId, setGrabbedTaskId] = useState<string | null>(null);
   const [handPos, setHandPos] = useState({ x: 0, y: 0 });
   const [targetColumn, setTargetColumn] = useState<ColumnType | null>(null);
-  
+
   const [isPointerMode, setIsPointerMode] = useState(false);
   const [targetElementId, setTargetElementId] = useState<string | null>(null);
-  
+
   const tasksRef = useRef(tasks);
   const onMagicDropRef = useRef(onMagicDrop);
   const grabbedTaskIdRef = useRef<string | null>(null);
   const targetColumnRef = useRef<ColumnType | null>(null);
-  
+
   // Refs para el sistema de dwell (clic por inmovilidad)
   const dwellStartTimeRef = useRef<number | null>(null);
   const lastSteadyPosRef = useRef({ x: 0, y: 0 });
@@ -40,189 +40,215 @@ const MagicModeOverlay: React.FC<MagicModeOverlayProps> = ({ tasks, onMagicDrop 
     if (!videoRef.current) return;
 
     let active = true;
-    const hands = new (window as any).Hands({
-      locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-    });
+    let hands: any = null;
+    let camera: any = null;
 
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-
-    hands.onResults((results: any) => {
-      if (!active) return;
-      
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-        
-        const base = landmarks[0];
-        const indexTip = landmarks[8];
-        const middleTip = landmarks[12];
-        const ringTip = landmarks[16];
-
-        const getDist = (p1: any, p2: any) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-        
-        const dIndex = getDist(indexTip, base);
-        const dMiddle = getDist(middleTip, base);
-        const dRing = getDist(ringTip, base);
-
-        // Detectar si está en modo puntero (dedo índice extendido)
-        const pointerDetected = dIndex > 0.18 && dMiddle < 0.20 && dRing < 0.20;
-        const isFist = dIndex < 0.15 && dMiddle < 0.15 && dRing < 0.15;
-        
-        setIsPointerMode(pointerDetected);
-
-        const rawX = (1 - landmarks[pointerDetected ? 8 : 9].x) * window.innerWidth;
-        const rawY = landmarks[pointerDetected ? 8 : 9].y * window.innerHeight;
-
-        // Suavizado de posición para que el puntero se sienta "de seda"
-        smoothPosRef.current.x += (rawX - smoothPosRef.current.x) * 0.4;
-        smoothPosRef.current.y += (rawY - smoothPosRef.current.y) * 0.4;
-
-        const x = smoothPosRef.current.x;
-        const y = smoothPosRef.current.y;
-        setHandPos({ x, y });
-
-        if (pointerDetected) {
-          setGrabbedTaskId(null);
-          setHighlightedTaskId(null);
-
-          // Lógica de Dwell invisible (0.5s de inmovilidad)
-          const distFromLastSteady = Math.sqrt(
-            Math.pow(x - lastSteadyPosRef.current.x, 2) + 
-            Math.pow(y - lastSteadyPosRef.current.y, 2)
-          );
-
-          if (distFromLastSteady > STILLNESS_THRESHOLD) {
-            dwellStartTimeRef.current = Date.now();
-            lastSteadyPosRef.current = { x, y };
-            setTargetElementId(null);
-          } else {
-            const elapsed = Date.now() - (dwellStartTimeRef.current || Date.now());
-
-            const elementUnder = document.elementFromPoint(x, y);
-            const interactiveEl = elementUnder?.closest('button, input, textarea, a, [role="button"]');
-            setTargetElementId(interactiveEl?.id || null);
-
-            if (elapsed >= DWELL_DURATION && dwellStartTimeRef.current !== null) {
-              if (elementUnder) {
-                (elementUnder as HTMLElement).click();
-                if (elementUnder instanceof HTMLInputElement || elementUnder instanceof HTMLTextAreaElement) {
-                  elementUnder.focus();
-                }
-              }
-
-              // Feedback visual de clic (Ripple azul rápido)
-              const ripple = document.createElement('div');
-              ripple.className = `fixed rounded-full pointer-events-none animate-ping z-[10001] bg-[#0088ff]/80`;
-              ripple.style.left = `${x - 50}px`;
-              ripple.style.top = `${y - 50}px`;
-              ripple.style.width = '100px';
-              ripple.style.height = '100px';
-              document.body.appendChild(ripple);
-              setTimeout(() => ripple.remove(), 600);
-
-              dwellStartTimeRef.current = Date.now();
-            }
-          }
-        } else {
-          setTargetElementId(null);
-          dwellStartTimeRef.current = null;
-
-          if (!isFist) {
-            if (grabbedTaskIdRef.current) {
-              if (targetColumnRef.current) {
-                onMagicDropRef.current(grabbedTaskIdRef.current, targetColumnRef.current);
-              }
-              setGrabbedTaskId(null);
-            }
-            
-            let nearestId: string | null = null;
-            let minDist = Infinity;
-            tasksRef.current.forEach(task => {
-              const el = document.getElementById(`task-${task.id}`);
-              if (el) {
-                const rect = el.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-                const d = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
-                if (d < minDist && d < 300) {
-                  minDist = d;
-                  nearestId = task.id;
-                }
-              }
-            });
-            setHighlightedTaskId(nearestId);
-          }
-
-          if (isFist && !grabbedTaskIdRef.current) {
-            setHighlightedTaskId(current => {
-              if (current) setGrabbedTaskId(current);
-              return current;
-            });
-          }
-
-          const colElements = document.querySelectorAll('[data-column-id]');
-          let currentCol: ColumnType | null = null;
-          colElements.forEach(el => {
-            const rect = el.getBoundingClientRect();
-            if (x >= rect.left && x <= rect.right) {
-              currentCol = el.getAttribute('data-column-id') as ColumnType;
-            }
-          });
-          setTargetColumn(currentCol);
-        }
-      } else {
-        setHighlightedTaskId(null);
-        setTargetElementId(null);
-        setIsPointerMode(false);
-        dwellStartTimeRef.current = null;
+    const initializeMediaPipe = async () => {
+      // Check if scripts are loaded
+      if (!(window as any).Hands || !(window as any).Camera) {
+        console.log("Waiting for MediaPipe scripts...");
+        setTimeout(initializeMediaPipe, 100);
+        return;
       }
-    });
 
-    const camera = new (window as any).Camera(videoRef.current, {
-      onFrame: async () => {
-        if (active && videoRef.current) {
-          try {
-            await hands.send({ image: videoRef.current });
-          } catch (e) {
-            console.warn("MediaPipe camera error:", e);
+      console.log("Initializing MediaPipe Hands...");
+      try {
+        hands = new (window as any).Hands({
+          locateFile: (file: string) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
           }
+        });
+
+        hands.setOptions({
+          maxNumHands: 1,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+
+        hands.onResults((results: any) => {
+          if (!active) return;
+
+          if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            const landmarks = results.multiHandLandmarks[0];
+
+            const base = landmarks[0];
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            const ringTip = landmarks[16];
+
+            const getDist = (p1: any, p2: any) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+
+            const dIndex = getDist(indexTip, base);
+            const dMiddle = getDist(middleTip, base);
+            const dRing = getDist(ringTip, base);
+
+            // Detectar si está en modo puntero (dedo índice extendido)
+            const pointerDetected = dIndex > 0.18 && dMiddle < 0.20 && dRing < 0.20;
+            const isFist = dIndex < 0.15 && dMiddle < 0.15 && dRing < 0.15;
+
+            setIsPointerMode(pointerDetected);
+
+            const rawX = (1 - landmarks[pointerDetected ? 8 : 9].x) * window.innerWidth;
+            const rawY = landmarks[pointerDetected ? 8 : 9].y * window.innerHeight;
+
+            // Suavizado de posición para que el puntero se sienta "de seda"
+            smoothPosRef.current.x += (rawX - smoothPosRef.current.x) * 0.4;
+            smoothPosRef.current.y += (rawY - smoothPosRef.current.y) * 0.4;
+
+            const x = smoothPosRef.current.x;
+            const y = smoothPosRef.current.y;
+            setHandPos({ x, y });
+
+            if (pointerDetected) {
+              setGrabbedTaskId(null);
+              setHighlightedTaskId(null);
+
+              // Lógica de Dwell invisible (0.5s de inmovilidad)
+              const distFromLastSteady = Math.sqrt(
+                Math.pow(x - lastSteadyPosRef.current.x, 2) +
+                Math.pow(y - lastSteadyPosRef.current.y, 2)
+              );
+
+              if (distFromLastSteady > STILLNESS_THRESHOLD) {
+                dwellStartTimeRef.current = Date.now();
+                lastSteadyPosRef.current = { x, y };
+                setTargetElementId(null);
+              } else {
+                const elapsed = Date.now() - (dwellStartTimeRef.current || Date.now());
+
+                const elementUnder = document.elementFromPoint(x, y);
+                const interactiveEl = elementUnder?.closest('button, input, textarea, a, [role="button"]');
+                setTargetElementId(interactiveEl?.id || null);
+
+                if (elapsed >= DWELL_DURATION && dwellStartTimeRef.current !== null) {
+                  if (elementUnder) {
+                    (elementUnder as HTMLElement).click();
+                    if (elementUnder instanceof HTMLInputElement || elementUnder instanceof HTMLTextAreaElement) {
+                      elementUnder.focus();
+                    }
+                  }
+
+                  // Feedback visual de clic (Ripple azul rápido)
+                  const ripple = document.createElement('div');
+                  ripple.className = `fixed rounded-full pointer-events-none animate-ping z-[10001] bg-[#0088ff]/80`;
+                  ripple.style.left = `${x - 50}px`;
+                  ripple.style.top = `${y - 50}px`;
+                  ripple.style.width = '100px';
+                  ripple.style.height = '100px';
+                  document.body.appendChild(ripple);
+                  setTimeout(() => ripple.remove(), 600);
+
+                  dwellStartTimeRef.current = Date.now();
+                }
+              }
+            } else {
+              setTargetElementId(null);
+              dwellStartTimeRef.current = null;
+
+              if (!isFist) {
+                if (grabbedTaskIdRef.current) {
+                  if (targetColumnRef.current) {
+                    onMagicDropRef.current(grabbedTaskIdRef.current, targetColumnRef.current);
+                  }
+                  setGrabbedTaskId(null);
+                }
+
+                let nearestId: string | null = null;
+                let minDist = Infinity;
+                tasksRef.current.forEach(task => {
+                  const el = document.getElementById(`task-${task.id}`);
+                  if (el) {
+                    const rect = el.getBoundingClientRect();
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    const d = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                    if (d < minDist && d < 300) {
+                      minDist = d;
+                      nearestId = task.id;
+                    }
+                  }
+                });
+                setHighlightedTaskId(nearestId);
+              }
+
+              if (isFist && !grabbedTaskIdRef.current) {
+                setHighlightedTaskId(current => {
+                  if (current) setGrabbedTaskId(current);
+                  return current;
+                });
+              }
+
+              const colElements = document.querySelectorAll('[data-column-id]');
+              let currentCol: ColumnType | null = null;
+              colElements.forEach(el => {
+                const rect = el.getBoundingClientRect();
+                if (x >= rect.left && x <= rect.right) {
+                  currentCol = el.getAttribute('data-column-id') as ColumnType;
+                }
+              });
+              setTargetColumn(currentCol);
+            }
+          } else {
+            setHighlightedTaskId(null);
+            setTargetElementId(null);
+            setIsPointerMode(false);
+            dwellStartTimeRef.current = null;
+          }
+        });
+
+        if (videoRef.current) {
+          camera = new (window as any).Camera(videoRef.current, {
+            onFrame: async () => {
+              if (active && videoRef.current) {
+                try {
+                  await hands.send({ image: videoRef.current });
+                } catch (e) {
+                  console.warn("MediaPipe camera error:", e);
+                }
+              }
+            },
+            width: 1280,
+            height: 720
+          });
+          await camera.start();
+          console.log("Camera started successfully");
         }
-      },
-      width: 1280,
-      height: 720
-    });
-    camera.start();
+      } catch (error) {
+        console.error("Error initializing MediaPipe:", error);
+      }
+    };
+
+    initializeMediaPipe();
 
     return () => {
       active = false;
-      camera.stop();
-      try {
-        hands.close();
-      } catch (e) {
-        console.error("Error closing hands:", e);
+      if (camera) camera.stop();
+      if (hands) {
+        try {
+          hands.close();
+        } catch (e) {
+          console.error("Error closing hands:", e);
+        }
       }
     };
   }, []);
 
   return (
     <div className="fixed inset-0 z-[10000] pointer-events-none overflow-hidden select-none">
-      <video 
-        ref={videoRef} 
-        className="absolute inset-0 w-full h-full object-cover opacity-[0.2] scale-x-[-1] blur-[1.5px]" 
-        autoPlay 
-        muted 
-        playsInline 
+      <video
+        ref={videoRef}
+        className="absolute inset-0 w-full h-full object-cover opacity-[0.2] scale-x-[-1] blur-[1.5px]"
+        autoPlay
+        muted
+        playsInline
       />
 
-      <div 
+      <div
         className="absolute flex items-center justify-center z-[10001] will-change-transform"
-        style={{ 
-          left: handPos.x, 
-          top: handPos.y, 
+        style={{
+          left: handPos.x,
+          top: handPos.y,
           transform: `translate(-50%, -50%)`,
         }}
       >
@@ -236,7 +262,7 @@ const MagicModeOverlay: React.FC<MagicModeOverlayProps> = ({ tasks, onMagicDrop 
             <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_15px_white]" />
           </div>
         ) : (
-          <div 
+          <div
             className={`w-16 h-16 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${grabbedTaskId ? 'scale-75 bg-[#0088ff]/40 border-[#0088ff] shadow-[0_0_80px_#0088ff]' : 'border-[#0088ff]/60 shadow-[0_0_30px_rgba(0,136,255,0.3)]'}`}
           >
             <div className={`w-3 h-3 rounded-full ${grabbedTaskId ? 'bg-white scale-150 animate-pulse' : 'bg-[#0088ff] opacity-60'}`} />

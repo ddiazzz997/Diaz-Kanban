@@ -3,7 +3,8 @@ import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { Task } from "../types";
 
 // Fix: Initializing GoogleGenAI with process.env.API_KEY directly as per SDK guidelines.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const createTaskDeclaration: FunctionDeclaration = {
   name: 'createTask',
@@ -66,8 +67,11 @@ export async function getAIChatResponse(messages: { role: string, content: strin
   `;
 
   try {
+    if (!ai) {
+      return { text: "Error de configuración: API Key de Gemini no encontrada.", functionCalls: undefined };
+    }
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-1.5-flash',
       contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
       config: {
         systemInstruction,
