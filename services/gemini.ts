@@ -77,11 +77,20 @@ export async function getAIChatResponse(messages: { role: string, content: strin
       tools: [{ functionDeclarations: [createTaskDeclaration] }]
     });
 
+    // History must start with user role and alternate
+    const rawHistory = messages.slice(0, -1);
+    let historyStart = 0;
+    while (historyStart < rawHistory.length && rawHistory[historyStart].role === 'assistant') {
+      historyStart++;
+    }
+
+    const context = rawHistory.slice(historyStart).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+
     const chat = model.startChat({
-      history: messages.slice(0, -1).map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }))
+      history: context
     });
 
     const result = await chat.sendMessage(messages[messages.length - 1].content);
