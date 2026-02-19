@@ -1,5 +1,5 @@
 
-import { GoogleGenerativeAI, FunctionDeclaration, FunctionDeclarationSchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, FunctionDeclaration, SchemaType } from "@google/generative-ai";
 import { Task } from "../types";
 
 // Fix: Initializing GoogleGenerativeAI with import.meta.env.VITE_GEMINI_API_KEY for Vite compatibility.
@@ -10,23 +10,23 @@ const createTaskDeclaration: FunctionDeclaration = {
   name: 'createTask',
   description: 'Crea una nueva tarea o protocolo en el tablero Kanban.',
   parameters: {
-    type: FunctionDeclarationSchemaType.OBJECT,
+    type: SchemaType.OBJECT,
     properties: {
       title: {
-        type: FunctionDeclarationSchemaType.STRING,
+        type: SchemaType.STRING,
         description: 'El título corto, sintetizado y claro de la tarea.',
       },
       description: {
-        type: FunctionDeclarationSchemaType.STRING,
+        type: SchemaType.STRING,
         description: 'Detalles operativos breves. No más de 3 líneas de texto.',
       },
       priority: {
-        type: FunctionDeclarationSchemaType.STRING,
+        type: SchemaType.STRING,
         description: 'Nivel de prioridad: low, medium o high.',
         enum: ['low', 'medium', 'high'],
       },
       column: {
-        type: FunctionDeclarationSchemaType.STRING,
+        type: SchemaType.STRING,
         description: 'Columna de despliegue: pending, progress o done.',
         enum: ['pending', 'progress', 'done'],
       },
