@@ -71,7 +71,7 @@ export async function getAIChatResponse(messages: { role: string, content: strin
       return { text: "Error de configuración: API Key de Gemini no encontrada.", functionCalls: undefined };
     }
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-latest',
       contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
       config: {
         systemInstruction,
