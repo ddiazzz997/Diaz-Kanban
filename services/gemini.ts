@@ -24,11 +24,13 @@ const createTaskDeclaration: FunctionDeclaration = {
         type: SchemaType.STRING,
         description: 'Nivel de prioridad: low, medium o high.',
         enum: ['low', 'medium', 'high'],
+        format: 'enum',
       },
       column: {
         type: SchemaType.STRING,
         description: 'Columna de despliegue: pending, progress o done.',
         enum: ['pending', 'progress', 'done'],
+        format: 'enum',
       },
     },
     required: ['title', 'priority', 'column'],
